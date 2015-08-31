@@ -17,15 +17,15 @@ public class HtmlScanner{
     private BufferedReader in;
     private String webPageURL;
     private String pageCodeString;
-    public static Map<String,Set<? extends String>> outLinks = new LinkedHashMap<>();
-    public static Map<Integer,Set<? extends String>> innerLinks = new LinkedHashMap<>();
+    private static Map<String,Set<? extends String>> outLinks = new HashMap<>();
+    private static Map<Integer,Set<? extends String>> innerLinks = new HashMap<>();
     private Set<String> tempInnerLinks = new TreeSet<>();
     private Set<String> tempOuterLinks = new TreeSet<>();
     private Set<String> haveToVisit = new TreeSet();
     private static String visitedInnerLinks = "";
     private static PriorityQueue<String> pq = new PriorityQueue<>();
-    SaveInnerData sid = new SaveInnerData();
-    SaveOuterData sod = new SaveOuterData();
+    private SaveInnerData sid = new SaveInnerData();
+    private SaveOuterData sod = new SaveOuterData();
 
     public void scanWebPage(String webPageUrl){
         try{
@@ -41,10 +41,9 @@ public class HtmlScanner{
                 conn = (HttpURLConnection) url.openConnection();
                 in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 while((pageCodeString=in.readLine())!=null){
-                    if(checkPageCodeString(pageCodeString,".*href=\"http.*")&&!checkPageCodeString(pageCodeString,".*"+returnCleanURL()+".*"))
+                    if(checkPCSInOut(pageCodeString,0))
                         sod.saveToTempOuterLinks(pageCodeString);
-                    while((checkPageCodeString(pageCodeString,".*href=\".*"+returnCleanURL()+".*\\.html.*")||checkPageCodeString(pageCodeString,".*href=\"\\w*\\.html.*"))&&
-                            !checkPageCodeString(pageCodeString,".*href=\".*\\.xml.*")){
+                    while(checkPCSInOut(pageCodeString,1)){
                         sid.saveToTempInnerLinks(pageCodeString);
                         pageCodeString = pageCodeString.substring(pageCodeString.indexOf(".html")+6);
                     }
@@ -74,36 +73,41 @@ public class HtmlScanner{
         Matcher myMatcher = myPattern.matcher(stringToCheck);
         return myMatcher.matches();
     }
-    /**
-     * @return main page URL as a String
-     */
+    private boolean checkPCSInOut(String stringToCheck, int switcher){
+        switch(switcher){
+            case 0: return checkPageCodeString(stringToCheck,".*href=\"http.*")
+                        &&!checkPageCodeString(stringToCheck,".*"+returnCleanURL()+".*");
+            case 1: return (checkPageCodeString(stringToCheck,".*href=\".*"+returnCleanURL()+".*\\.html.*")
+                        ||checkPageCodeString(stringToCheck,".*href=\"\\w*\\.html.*"))&&
+                        !checkPageCodeString(stringToCheck,".*href=\".*\\.xml.*");
+            default: return false;
+        }
+    }
     private String returnCleanURL() {
         String newString = webPageURL;
         if (URLisValid) {
-            int a = newString.indexOf("http");
-            int a2 = newString.indexOf("https");
-            int b = newString.indexOf("/", (a + 7));
-            int b2 = newString.indexOf("/", (a + 8));
-            if (b2 != -1) {
-                if(a2!=-1){
-                    newString = newString.substring(a2+8, b2);
+            final int indOfHttp = newString.indexOf("http");
+            final int indOfHttps = newString.indexOf("https");
+            final int indOfSlash = newString.indexOf("/", (indOfHttp + 7));
+            final int indOfSlashHttps = newString.indexOf("/", (indOfHttp + 8));
+            if (indOfSlashHttps != -1) {
+                if(indOfHttps!=-1){
+                    newString = newString.substring(indOfHttps+8, indOfSlashHttps);
                     return newString;
                 }else{
-                    newString = newString.substring(a+7, b);
+                    newString = newString.substring(indOfHttp+7, indOfSlash);
                     return newString;
                 }
             }else{
-                if(a2!=-1){
-                    newString = newString.substring(a2+8);
+                if(indOfHttps!=-1){
+                    newString = newString.substring(indOfHttps+8);
                     return newString;
                 }else{
-                    newString = newString.substring(a+7);
+                    newString = newString.substring(indOfHttp+7);
                     return newString;
                 }
             }
-        } else {
-            return "";
-        }
+        }else return null;
     }
     private void fillPriorityQueue(){
         haveToVisit = new TreeSet();
@@ -116,34 +120,31 @@ public class HtmlScanner{
     }
     private class SaveInnerData{
         private Set<String> wpurlSet = new TreeSet<>();
-        private String TIL;
-        private String workString;
         synchronized void saveToTempInnerLinks(String pcs){
             String workString = pcs;
             if(checkPageCodeString(workString,".*href=\".*"+returnCleanURL()+".*\\.html.*")){
-                int a = workString.indexOf("href=\"http");
-                int b = workString.indexOf("\"",(a+6));
-                if(b!=-1){
-                    workString = workString.substring((a+6), b);
+                final int indOfHrefHttp = workString.indexOf("href=\"http");
+                final int indOfSlash = workString.indexOf("\"",(indOfHrefHttp+6));
+                if(indOfSlash!=-1){
+                    workString = workString.substring((indOfHrefHttp+6), indOfSlash);
                     tempInnerLinks.add(workString);
                 }
             }
             if(checkPageCodeString(workString,".*href=\"\\w*\\.html.*")){
-                int a = workString.indexOf("href=\"");
-                int b = workString.indexOf("\"",(a+6));
-                if(b!=-1){
-                    workString = workString.substring((a+6), b);
+                final int indOfHref = workString.indexOf("href=\"");
+                final int indOfSlash = workString.indexOf("\"",(indOfHref+6));
+                if(indOfSlash!=-1){
+                    workString = workString.substring((indOfHref+6), indOfSlash);
                     if(webPageURL.equals("http://"+returnCleanURL())){
                         tempInnerLinks.add("http://"+returnCleanURL()+"/"+workString);
                     }else if(webPageURL.equals("http://"+returnCleanURL()+"/")){
                         tempInnerLinks.add(webPageURL+workString);
                     }else{
                         String workString2 = webPageURL;
-                        int c = workString2.lastIndexOf("/");
-                        workString2 = workString2.substring(0, c+1);
+                        final int lastIndOfSlash = workString2.lastIndexOf("/");
+                        workString2 = workString2.substring(0, lastIndOfSlash+1);
                         tempInnerLinks.add(workString2+workString);
                     }
-                    
                 }
             }
         }
@@ -153,8 +154,8 @@ public class HtmlScanner{
                 innerLinks.put(0, wpurlSet);
                 innerLinks.put(1, tempInnerLinks);
             }else{
-                TIL = "";
-                workString = "";
+                String TIL = "";
+                String workString = "";
                 wpurlSet = new TreeSet<>();
                 for(String s : tempInnerLinks)
                     TIL +=s+"\n";
@@ -184,10 +185,10 @@ public class HtmlScanner{
     private class SaveOuterData{
         synchronized void saveToTempOuterLinks(String pcs){
             String workString = pcs;
-            int a = workString.indexOf("href=\"http");
-            int b = workString.indexOf("\"",(a+6));
-            if(b!=-1){
-                workString = workString.substring((a+6), b);
+            final int indOfHrefHttp = workString.indexOf("href=\"http");
+            final int indOfSlash = workString.indexOf("\"",(indOfHrefHttp+6));
+            if(indOfSlash!=-1){
+                workString = workString.substring((indOfHrefHttp+6), indOfSlash);
                 tempOuterLinks.add(workString);
             }
         }
@@ -195,34 +196,24 @@ public class HtmlScanner{
             outLinks.put(webPageURL, tempOuterLinks);
         }
     }
-    
-
-    
-    public static void main(String[] args) throws Exception{
+    public static void main(String[] args){
         HtmlScanner hs = new HtmlScanner();
-        hs.scanWebPage("http://www.beluys.com");
         //hs.scanWebPage("http://manga-online.com.ua/manga/shingeki-no-kyojin/page,45,25875-Shingeki-no-Kyojin.-Tom-16.-Glava-065.-Mechti-i-proklyatya.html");
         //hs.scanWebPage("http://www.lostfilm.tv");
-        //hs.scanWebPage("http://www.beluys.com/html_basics/html_page.html");
+        hs.scanWebPage("http://www.beluys.com/html_basics/html_page.html");
         //hs.scanWebPage("http://www.smartincom.ru/html/");
-
-       /*println("VisitedInnerLinks: ");
-       String[] vil = visitedInnerLinks.split("\n");
-       for(String s : vil)
-           println("    "+s);
-       println();*/
        println("InnerLinks: ");
        for(int i : innerLinks.keySet()){
-           println("    Clicks : "+i);
+           println("\tClicks : "+i);
            for(String s : innerLinks.get(i))
-               println("        "+s);
+               println("\t\t"+s);
        }
        println();
        println("OutLinks: ");
        for(String key : outLinks.keySet()){
-           println("    Page : "+key);
+           println("\tPage : "+key);
            for(String value : outLinks.get(key))
-               println("            "+value);
+               println("\t\t"+value);
        }
     }
     
